@@ -1,1 +1,57 @@
+name: Gerar APK PES 2013
 
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar repositorio
+        uses: actions/checkout@v4
+
+      - name: Preparar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Extrair projeto
+        run: |
+          ZIP=$(find . -maxdepth 3 -name 'PES2013_Recomp_Android_Base.zip' -print -quit)
+
+          if [ -z "$ZIP" ]; then
+            echo "ERRO: ZIP do projeto nao encontrado."
+            exit 1
+          fi
+
+          mkdir -p /tmp/pes-project
+          unzip -o "$ZIP" -d /tmp/pes-project
+
+          SETTINGS=$(find /tmp/pes-project -name settings.gradle.kts -print -quit)
+
+          if [ -z "$SETTINGS" ]; then
+            echo "ERRO: settings.gradle.kts nao encontrado."
+            exit 1
+          fi
+
+          ROOT=$(dirname "$SETTINGS")
+          cp -a "$ROOT"/. .
+
+          test -f app/build.gradle.kts
+          test -f app/src/main/AndroidManifest.xml
+
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Compilar APK
+        run: gradle assembleDebug
+
+      - name: Disponibilizar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: PES2013-Android-APK
+          path: app/build/outputs/apk/debug/*.apk
