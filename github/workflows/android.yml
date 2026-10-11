@@ -1,57 +1,98 @@
-name: Gerar APK PES 2013
+name: Gerar APK PES 2013 v1.5 DEV
 
 on:
   workflow_dispatch:
   push:
-    branches: [main, master]
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
 
 jobs:
   build:
+    name: Compilar APK Android
     runs-on: ubuntu-latest
 
     steps:
       - name: Baixar repositorio
         uses: actions/checkout@v4
 
-      - name: Preparar Java
+      - name: Preparar Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Extrair projeto
+      - name: Localizar e extrair projeto
+        shell: bash
         run: |
-          ZIP=$(find . -maxdepth 3 -name 'PES2013_Recomp_Android_Base.zip' -print -quit)
+          set -euo pipefail
 
-          if [ -z "$ZIP" ]; then
-            echo "ERRO: ZIP do projeto nao encontrado."
+          ZIP="PES2013_Android_v1.5_DEV.zip"
+
+          if [ ! -f "$ZIP" ]; then
+            ZIP=$(find . -maxdepth 4 -type f \
+              -iname 'PES2013_Android_v1.5_DEV.zip' \
+              -print -quit)
+          fi
+
+          if [ -z "${ZIP:-}" ] || [ ! -f "$ZIP" ]; then
+            echo "::error::PES2013_Android_v1.5_DEV.zip não encontrado no repositório."
+            echo "Envie o ZIP da versão 1.5 para a raiz do repositório."
             exit 1
           fi
 
           mkdir -p /tmp/pes-project
-          unzip -o "$ZIP" -d /tmp/pes-project
+          unzip -q "$ZIP" -d /tmp/pes-project
 
-          SETTINGS=$(find /tmp/pes-project -name settings.gradle.kts -print -quit)
+          SETTINGS=$(find /tmp/pes-project \
+            -type f -name settings.gradle.kts -print -quit)
 
           if [ -z "$SETTINGS" ]; then
-            echo "ERRO: settings.gradle.kts nao encontrado."
+            echo "::error::settings.gradle.kts não encontrado dentro do ZIP."
             exit 1
           fi
 
           ROOT=$(dirname "$SETTINGS")
-          cp -a "$ROOT"/. .
 
+          cp -a "$ROOT"/. "$GITHUB_WORKSPACE"/
+
+          test -f settings.gradle.kts
+          test -f build.gradle.kts
           test -f app/build.gradle.kts
           test -f app/src/main/AndroidManifest.xml
 
-      - name: Configurar Gradle
+          echo "Projeto localizado em: $ROOT"
+          echo "Estrutura do projeto validada."
+
+      - name: Configurar Java e Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Compilar APK
-        run: gradle assembleDebug
+      - name: Compilar APK Debug
+        run: gradle --no-daemon assembleDebug
+
+      - name: Verificar APK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APK=$(find app/build/outputs/apk/debug \
+            -type f -name '*.apk' -print -quit)
+
+          if [ -z "${APK:-}" ]; then
+            echo "::error::A compilação terminou sem gerar um APK."
+            exit 1
+          fi
+
+          echo "APK gerado: $APK"
+          ls -lh "$APK"
 
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: PES2013-Android-APK
+          name: PES2013-Android-v1.5-DEV
           path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7
